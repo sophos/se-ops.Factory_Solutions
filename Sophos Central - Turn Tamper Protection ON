@@ -1,0 +1,97 @@
+---
+variables:
+  - type: Credential
+    name: sophosCentralCredential
+    key: sophosCentralCredential
+    required: true
+    visible: true
+    default: false
+    allowed_types:
+      - username_password
+  - type: Boolean
+    name: Debug
+    key: debug
+    value: false
+    required: true
+    visible: true
+    default: false
+steps:
+  - id: p1
+    name: '[Library] Sophos Central Auth & whoami'
+    type: pipeline
+    depends: []
+    properties:
+      pipeline_id: 63483c1040b902a78301ba6f
+      pipeline_revision_id: latest_published
+      variables:
+        SophosCentralCredential: '{|vars.sophosCentralCredential|}'
+        debug: '{|vars.debug|}'
+        jwtToken: jwtToken
+  - id: p3
+    name: '[Library] [Endpoint] Tamper ON'
+    type: pipeline
+    depends:
+      - p2
+    properties:
+      pipeline_id: 634c4ceb0ad6500f2cff9830
+      pipeline_revision_id: latest_published
+      variables:
+        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
+        outputFile: '{|each.item|}'
+        debug: '{|vars.debug|}'
+    each: '{|steps.p2.results | json_query(''[].outputs.outputFileList[]'')|}'
+  - id: p2
+    name: '[Library] Get endpoint data'
+    type: pipeline
+    depends:
+      - p1
+    properties:
+      pipeline_id: 63483c1040b9028c2f01ba6c
+      pipeline_revision_id: latest_published
+      variables:
+        tamperState: Tamper Protection is OFF
+        apiView: Basic
+        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
+        tenantID: '{|each.item.id|}'
+        apiRegion: '{|each.item.apiRegion|}'
+        outputFile: endpoints
+        debug: '{|vars.debug|}'
+    each: '{|read_file(''tenants.json'') | parse_json()|}'
+outputs:
+  - key: apiStatus
+    value: '{|steps.p3.results | json_query(''[].outputs.apiStatus | [].outputs.apiStatus'')|}'
+  - key: apiSummary
+    value: |-
+      {|[
+        {
+        "Action": "Tamper protection turned on",
+        "Total Successful": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status == `201`] | length(@)'),
+        "Total Failed": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`] | length(@)'),
+        "Systems with errors": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`]')
+        }
+      ]|}
+layout:
+  elements:
+    - id: p1
+      position:
+        x: -275
+        'y': -195
+      links: []
+    - id: p3
+      position:
+        x: -275
+        'y': -35
+      links:
+        - sourceId: p2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: p2
+      position:
+        x: -275
+        'y': -115
+      links:
+        - sourceId: p1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
