@@ -15,6 +15,19 @@ variables:
     required: true
     visible: true
     default: false
+  - type: Boolean
+    name: Audit Mode
+    key: auditMode
+    value: false
+    required: true
+    visible: true
+    default: true
+    description: |-
+      When enabled, any final action taken by the pipeline will not be run.
+
+      This is primarily for proof of concept testing and development, but can be used for verification prior to a destructive action.
+
+      Off by default
 steps:
   - id: p1
     name: '[Library] Sophos Central Auth & whoami'
@@ -39,6 +52,7 @@ steps:
         jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
         outputFile: '{|each.item|}'
         debug: '{|vars.debug|}'
+        auditMode: '{|vars.auditMode|}'
     each: '{|steps.p2.results | json_query(''[].outputs.outputFileList[]'')|}'
   - id: p2
     name: '[Library] Get endpoint data'
@@ -64,7 +78,7 @@ outputs:
     value: |-
       {|[
         {
-        "Action": "Tamper protection turned on",
+        "Action": "Tamper protection turned on" if vars.auditMode == "false" else "Tamper on AUDIT MODE",
         "Total Successful": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status == `201`] | length(@)'),
         "Total Failed": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`] | length(@)'),
         "Systems with errors": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`]')
