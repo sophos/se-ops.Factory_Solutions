@@ -1,0 +1,213 @@
+---
+variables:
+  - type: Credential
+    name: sophosCentralCredential
+    key: sophosCentralCredential
+    required: true
+    visible: true
+    default: false
+    allowed_types:
+      - username_password
+    value: edb
+  - type: Boolean
+    name: Debug
+    key: debug
+    value: true
+    required: true
+    visible: true
+    default: false
+  - type: Boolean
+    name: Audit Mode
+    key: auditMode
+    value: true
+    required: true
+    visible: true
+    default: true
+    description: |-
+      When enabled, any final action taken by the pipeline will not be run.
+
+      This is primarily for proof of concept testing and development, but can be used for verification prior to a destructive action.
+
+      Off by default
+  - type: String
+    name: Source Tenant ID
+    key: srcTenantID
+    value: 05779962-e855-41ae-9338-6cbf6a73a211
+    required: true
+    visible: true
+    default: true
+    description: Source sub-estate/tenant ID to migrate endpoint(s) FROM
+  - type: String
+    name: Destination Tenant ID
+    key: dstTenantID
+    value: 85a183fe-b633-46b8-8d66-6394ba8a8590
+    required: true
+    visible: true
+    default: true
+    description: Destination sub-estate/tenant ID to migrate endpoint(s) TO
+  - type: String
+    name: Input generated from pipeline 1
+    key: input
+    required: false
+    visible: true
+    default: false
+    value: |-
+      [
+        {
+          "srcTenantID": "05779962-e855-41ae-9338-6cbf6a73a211",
+          "dstTenantID": "85a183fe-b633-46b8-8d66-6394ba8a8590",
+          "migrationID": "7bf520af-0bc9-4af3-8c5e-3386457b3dd5",
+          "endpointList": "[{\"id\":\"c0c5ad21-9e19-4cec-86d3-0be06deb891d\",\"type\":\"computer\",\"tenant\":{\"id\":\"05779962-e855-41ae-9338-6cbf6a73a211\"},\"hostname\":\"SOPHOS02\"},{\"id\":\"c2f68574-95bb-4cd5-ba04-ff779964c97c\",\"tenant\":{\"id\":\"05779962-e855-41ae-9338-6cbf6a73a211\"}},{\"id\":\"f8e85b0a-ac85-4b5d-9409-d76923c7fb9f\",\"type\":\"computer\",\"tenant\":{\"id\":\"05779962-e855-41ae-9338-6cbf6a73a211\"},\"hostname\":\"SOPHOS03\"}]",
+          "endpointList_dump": "\"[{\\\"id\\\":\\\"c0c5ad21-9e19-4cec-86d3-0be06deb891d\\\",\\\"type\\\":\\\"computer\\\",\\\"tenant\\\":{\\\"id\\\":\\\"05779962-e855-41ae-9338-6cbf6a73a211\\\"},\\\"hostname\\\":\\\"SOPHOS02\\\"},{\\\"id\\\":\\\"c2f68574-95bb-4cd5-ba04-ff779964c97c\\\",\\\"tenant\\\":{\\\"id\\\":\\\"05779962-e855-41ae-9338-6cbf6a73a211\\\"}},{\\\"id\\\":\\\"f8e85b0a-ac85-4b5d-9409-d76923c7fb9f\\\",\\\"type\\\":\\\"computer\\\",\\\"tenant\\\":{\\\"id\\\":\\\"05779962-e855-41ae-9338-6cbf6a73a211\\\"},\\\"hostname\\\":\\\"SOPHOS03\\\"}]\""
+        }
+      ]
+steps:
+  - id: p1
+    name: '[Library] Sophos Central Auth & whoami'
+    type: pipeline
+    depends:
+      - debug2
+    properties:
+      pipeline_id: 63cef472980e48b584748c5e
+      pipeline_revision_id: latest
+      variables:
+        SophosCentralCredential: '{|vars.sophosCentralCredential|}'
+        debug: '{|vars.debug|}'
+        jwtToken: jwtToken
+  - id: p2
+    name: '[Library] [Endpoint] Migrate Endpoint 2'
+    type: pipeline
+    depends:
+      - p1
+    properties:
+      pipeline_id: 63dc5089d734768716f7022c
+      pipeline_revision_id: latest
+      variables:
+        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
+        outputFile: 'null'
+        debug: '{|vars.debug|}'
+        auditMode: '{|false|}'
+        srcTenantID: '{|vars.input | parse_json | json_query(''[].srcTenantID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
+        dstTenantID: '{|vars.input | parse_json | json_query(''[].dstTenantID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
+        migrationID: '{|vars.input | parse_json | json_query(''[].migrationID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
+  - id: p3
+    name: '[Library] [Endpoint] Delete Device'
+    type: pipeline
+    depends:
+      - file3
+    properties:
+      pipeline_id: 634ea47f0ad650a1e7ff9987
+      pipeline_revision_id: 636022f1751bbd10d65cc439
+      variables:
+        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
+        outputFile: sucessfulEndpoints.json
+        debug: '{|vars.debug|}'
+        auditMode: '{|vars.auditMode|}'
+  - id: debug2
+    name: DEBUG input
+    type: debug
+    depends: []
+    properties:
+      message: '{|vars.input|}'
+  - id: file1
+    name: Add data to endpoint file
+    type: file
+    depends:
+      - file2
+    properties:
+      path: sucessfulEndpoints.json
+      content: '{|read_file(''sucessfulEndpoints.json'') + "{\"id\": \"" + each.item + "\",\"tenant\": {\"id\": \"" + vars.srcTenantID + "\"}},"|}'
+    each: '{|steps.p2.result.outputs.successfulEndpoints|}'
+  - id: file2
+    name: Initialize endpoint file
+    type: file
+    depends:
+      - p2
+    properties:
+      path: sucessfulEndpoints.json
+      content: '['
+  - id: file3
+    name: Complete endpoints file
+    type: file
+    depends:
+      - file1
+    properties:
+      path: sucessfulEndpoints.json
+      content: '{|(read_file(''sucessfulEndpoints.json'') +"EOF") | replace(",EOF","]")|}'
+outputs:
+  - key: apiStatus
+    value: '{|steps.p3.result | json_query(''[].outputs.apiStatus | [].outputs.apiStatus'')|}'
+  - key: apiSummary
+    value: |-
+      {|[
+        {
+        "Action": "Migration triggered" if vars.auditMode == false else "Migration AUDIT MODE",
+        "Migration ID": steps.p3.result.outputs.migrationID,
+        "Total Successful": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status == `201`] | length(@)'),
+        "Total Failed": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`] | length(@)'),
+        "Systems with errors": steps.p3.results | json_query('[].outputs.apiStatus | [].outputs.apiStatus | [?status != `201`]')
+        }
+      ]|}
+  - key: migrationStatus
+    value: '{|steps.p2.result.outputs.fullResponse.items|}'
+layout:
+  elements:
+    - id: p1
+      position:
+        x: -275
+        'y': -195
+      links:
+        - sourceId: debug2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: p2
+      position:
+        x: -275
+        'y': -115
+      links:
+        - sourceId: p1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: p3
+      position:
+        x: -275
+        'y': 205
+      links:
+        - sourceId: file3
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: debug2
+      position:
+        x: -275
+        'y': -275
+      links: []
+    - id: file1
+      position:
+        x: -275
+        'y': 45
+      links:
+        - sourceId: file2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file2
+      position:
+        x: -275
+        'y': -35
+      links:
+        - sourceId: p2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file3
+      position:
+        x: -275
+        'y': 125
+      links:
+        - sourceId: file1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
