@@ -34,16 +34,6 @@ variables:
     required: false
     visible: true
     default: false
-    value: |-
-      [
-        {
-          "srcTenantID": "05779962-e855-41ae-9338-6cbf6a73a211",
-          "dstTenantID": "85a183fe-b633-46b8-8d66-6394ba8a8590",
-          "migrationID": "b0d31bcf-ca54-462c-80bc-38a2c4fffbad",
-          "expiresAt": "2023-03-21T18:15:02.527Z[UTC]",
-          "endpointList": "[{\"id\":\"f8e85b0a-ac85-4b5d-9409-d76923c7fb9f\",\"type\":\"computer\",\"tenant\":{\"id\":\"05779962-e855-41ae-9338-6cbf6a73a211\"},\"hostname\":\"SOPHOS03\"},{\"id\":\"c0c5ad21-9e19-4cec-86d3-0be06deb891d\",\"type\":\"computer\",\"tenant\":{\"id\":\"05779962-e855-41ae-9338-6cbf6a73a211\"},\"hostname\":\"SOPHOS02\"}]"
-        }
-      ]
 steps:
   - id: p3
     name: '[Library] [Endpoint] Delete Device'
