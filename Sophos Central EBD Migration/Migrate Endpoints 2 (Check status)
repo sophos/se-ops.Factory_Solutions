@@ -18,7 +18,7 @@ variables:
   - type: Boolean
     name: Audit Mode
     key: auditMode
-    value: true
+    value: false
     required: true
     visible: true
     default: true
@@ -29,63 +29,40 @@ variables:
 
       Off by default
   - type: String
-    name: Input generated from pipeline 1
-    key: input
-    required: false
+    name: Source Tenant ID
+    key: srcTenantID
+    required: true
     visible: true
-    default: false
+    default: true
+    description: Source sub-estate/tenant ID to migrate endpoint(s) FROM
+  - type: String
+    name: Destination Tenant ID
+    key: dstTenantID
+    required: true
+    visible: true
+    default: true
+    description: Destination sub-estate/tenant ID to migrate endpoint(s) TO
+  - type: Number
+    name: Number of Endpoints to Migrate
+    key: numEndpointsToMigrate
+    value: 3
+    required: true
+    visible: true
+    default: true
+    description: Randomly ordered quantity of endpoints to migrate from one tenant to another. (1-50 ONLY)
 steps:
-  - id: p3
-    name: '[Library] [Endpoint] Delete Device'
-    type: pipeline
-    depends:
-      - file3
-    properties:
-      pipeline_id: 634ea47f0ad650a1e7ff9987
-      pipeline_revision_id: 636022f1751bbd10d65cc439
-      variables:
-        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
-        outputFile: sucessfulEndpoints.json
-        debug: '{|vars.debug|}'
-        auditMode: '{|vars.auditMode|}'
   - id: file1
-    name: Add data to endpoint file
-    type: file
-    depends:
-      - file2
-    properties:
-      path: sucessfulEndpoints.json
-      content: '{|read_file(''sucessfulEndpoints.json'') + "{\"id\": \"" + each.item + "\",\"tenant\": {\"id\": \"" + vars.input | parse_json() | json_query(''[].srcTenantID'') + "\"},"+"\"hostname\": \"" + vars.endpointList | parse_json() | json_query(''[?id==`''+each.item+''`].hostname'') + "\"},"|}'
-    each: '{|steps.p2.result.outputs.successfulEndpoints|}'
-  - id: file2
-    name: Initialize endpoint file
+    name: Write File migrate.json
     type: file
     depends:
       - p2
     properties:
-      path: sucessfulEndpoints.json
-      content: '['
-  - id: file3
-    name: Complete endpoint file
-    type: file
-    depends:
-      - file1
-    properties:
-      path: sucessfulEndpoints.json
-      content: '{|(read_file(''sucessfulEndpoints.json'') +"EOF") | replace(",EOF","]")|}'
-  - id: vars1
-    name: Set endpointList variable from input
-    type: set_variables
-    depends: []
-    properties:
-      vars:
-        - key: endpointList
-          value: '{|''[{''+vars.input | parse_json() | json_query(''[].endpointList'') | dump | replace(''\\'','''') | replace(''['','''') | replace('']'','''') | replace(''\"{'','''') | replace(''}\"'','''') + ''}]''|}'
+      path: migrate.json
+      content: '{|read_file(steps.p2.results | json_query(''[].outputs.outputFileList[0]'') | dump | replace(''['','''') | replace('']'','''') | replace(''"'','''')) | parse_json() | json_query(''[0:''+vars.numEndpointsToMigrate+'']'') | dump|}'
   - id: p1
     name: '[Library] Sophos Central Auth & whoami'
     type: pipeline
-    depends:
-      - vars1
+    depends: []
     properties:
       pipeline_id: 63483c1040b902a78301ba6f
       pipeline_revision_id: latest_published
@@ -94,128 +71,91 @@ steps:
         jwtToken: jwtToken
         SophosCentralCredential: '{|vars.sophosCentralCredential|}'
   - id: p2
-    name: '[Library] [Endpoint] Migrate Endpoint 2'
+    name: '[Library] Get endpoint data'
     type: pipeline
     depends:
       - p1
     properties:
-      pipeline_id: 6408ebcd85ed29b1f179d464
+      pipeline_id: 63483c1040b9028c2f01ba6c
       pipeline_revision_id: latest_published
       variables:
         jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
-        outputFile: 'null'
+        apiView: Basic
+        tenantID: '{|each.item.id|}'
+        apiRegion: '{|each.item.apiRegion|}'
+        outputFile: endpoints
         debug: '{|vars.debug|}'
-        auditMode: '{|false|}'
-        srcTenantID: '{|vars.input | parse_json | json_query(''[].srcTenantID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
-        dstTenantID: '{|vars.input | parse_json | json_query(''[].dstTenantID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
-        migrationID: '{|vars.input | parse_json | json_query(''[].migrationID'') | dump | replace("[","") | replace("]","") | replace("\"","")|}'
-  - id: debug1
-    name: DEBUG sucessfulEndpoints.json
-    type: debug
-    depends:
-      - file3
-    properties:
-      message: '{|read_file(''sucessfulEndpoints.json'')|}'
-  - id: debug2
-    name: DEBUG srcTenantID
-    type: debug
+    each: '{|read_file(''tenants.json'') | parse_json() | json_query(''[?id==`''+vars.srcTenantID+''`]'')|}'
+  - id: p3
+    name: '[Library] [Endpoint] Migrate Endpoint 1'
+    type: pipeline
     depends:
       - file1
     properties:
-      message: '{|vars.input | parse_json() | json_query(''[].srcTenantID'') | dump|}'
+      pipeline_id: 6408ebbcd4f1c086842b71ff
+      pipeline_revision_id: latest_published
+      variables:
+        jwtToken: '{|steps.p1.result.outputs.jwtToken|}'
+        outputFile: migrate.json
+        debug: '{|vars.debug|}'
+        auditMode: '{|vars.auditMode|}'
+        srcTenantID: '{|vars.srcTenantID|}'
+        dstTenantID: '{|vars.dstTenantID|}'
 outputs:
   - key: apiStatus
-    value: '{|steps.p3.result | json_query(''outputs.apiStatus | [].outputs.apiStatus'')|}'
+    value: '{|steps.p3.result.outputs.apiStatus|}'
   - key: apiSummary
     value: |-
       {|[
         {
-        "Action": "Sucessfully migrated machines deleted" if vars.auditMode == false else "Deletion AUDIT MODE",
-        "Migration ID": steps.p3.result.outputs.migrationID,
-        "Total Successful": steps.p3.result | json_query('outputs.apiStatus | [].outputs.apiStatus | [?status == `200`] | length(@)'),
-        "Total Failed": steps.p3.result | json_query('outputs.apiStatus | [].outputs.apiStatus | [?status != `200`] | length(@)'),
-        "Systems with errors": steps.p3.result | json_query('outputs.apiStatus | [].outputs.apiStatus | [?status != `200`]')
-
+        "Action": "Migration job created" if vars.auditMode == false else "Migration AUDIT MODE",
+        "Migration ID": steps.p3.result.outputs.migrationID
         }
       ]|}
-  - key: migrationStatus
-    value: '{|steps.p2.result.outputs.fullResponse.items|}'
+  - key: endpointList
+    value: '{|read_file(''migrate.json'')|}'
+  - key: stageTwoInput
+    value: |-
+      {|[
+        {
+        "srcTenantID": vars.srcTenantID,
+        "dstTenantID": vars.dstTenantID,
+        "migrationID": steps.p3.result.outputs.migrationID,
+        "expiresAt": steps.p3.result.outputs.apiStatus.body.expiresAt,
+        "endpointList": read_file('migrate.json')
+        }
+      ]|}
 layout:
   elements:
-    - id: p3
-      position:
-        x: -275
-        'y': 205
-      links:
-        - sourceId: file3
-          sourcePort: bottom
-          targetPort: top
-          vertices: []
     - id: file1
       position:
-        x: -275
-        'y': 45
-      links:
-        - sourceId: file2
-          sourcePort: bottom
-          targetPort: top
-          vertices: []
-    - id: file2
-      position:
-        x: -275
+        x: -235
         'y': -35
       links:
         - sourceId: p2
           sourcePort: bottom
           targetPort: top
           vertices: []
-    - id: file3
-      position:
-        x: -275
-        'y': 125
-      links:
-        - sourceId: file1
-          sourcePort: bottom
-          targetPort: top
-          vertices: []
-    - id: vars1
-      position:
-        x: -275
-        'y': -275
-      links: []
     - id: p1
       position:
-        x: -275
+        x: -235
         'y': -195
-      links:
-        - sourceId: vars1
-          sourcePort: bottom
-          targetPort: top
-          vertices: []
+      links: []
     - id: p2
       position:
-        x: -275
+        x: -235
         'y': -115
       links:
         - sourceId: p1
           sourcePort: bottom
           targetPort: top
           vertices: []
-    - id: debug1
+    - id: p3
       position:
-        x: -85
-        'y': 125
-      links:
-        - sourceId: file3
-          sourcePort: right
-          targetPort: left
-          vertices: []
-    - id: debug2
-      position:
-        x: -85
+        x: -235
         'y': 45
       links:
         - sourceId: file1
-          sourcePort: right
-          targetPort: left
+          sourcePort: bottom
+          targetPort: top
           vertices: []
