@@ -1,0 +1,211 @@
+---
+variables:
+  - type: Credential
+    name: sophosCentralCredential
+    key: sophosCentralCredential
+    required: true
+    visible: true
+    default: false
+    allowed_types:
+      - username_password
+    value: edb
+  - type: Boolean
+    name: debug
+    key: debug
+    value: true
+    required: false
+    visible: true
+    default: false
+  - type: Boolean
+    name: Create markdown file
+    key: markdown
+    value: true
+    required: false
+    visible: true
+    default: false
+  - type: Boolean
+    name: Create csv file
+    key: csv
+    value: true
+    required: false
+    visible: true
+    default: false
+steps:
+  - id: file1
+    name: Initialize markdown file
+    type: file
+    depends:
+      - file7
+    properties:
+      path: results.md
+      content: MARKDOWN NOT SELECTED
+  - id: file2
+    name: Add data to markdown file
+    type: file
+    depends:
+      - if1
+    properties:
+      path: results.md
+      content: '{|read_file(''results.md'') + "\n" + "|" + each.item.tenantName + "|" + each.item.id + "|"|}'
+    each: '{|read_file(''tenants.json'') | parse_json()|}'
+  - id: file3
+    name: Initialize csv file
+    type: file
+    depends:
+      - file7
+    properties:
+      path: results.csv
+      content: CSV NOT SELECTED
+  - id: file4
+    name: Add data to csv file
+    type: file
+    depends:
+      - if2
+    properties:
+      path: results.csv
+      content: '{|read_file(''results.csv'') + "\n" + each.item.tenantName + "," + each.item.id + ","|}'
+    each: '{|read_file(''tenants.json'') | parse_json()|}'
+  - id: if1
+    name: Markdown ON
+    type: conditional
+    depends:
+      - file1
+    properties:
+      condition: '{|vars.markdown|}'
+  - id: if2
+    name: CSV ON
+    type: conditional
+    depends:
+      - file3
+    properties:
+      condition: '{|vars.csv|}'
+  - id: file5
+    name: Complete markdown file
+    type: file
+    depends:
+      - file2
+    properties:
+      path: results.md
+      content: '{|read_file(''results.md'') | replace ("MARKDOWN NOT SELECTED","|Tenant name|Tenant ID| \n |-|-|")|}'
+  - id: file6
+    name: Complete csv file
+    type: file
+    depends:
+      - file4
+    properties:
+      path: results.csv
+      content: '{|read_file(''results.csv'') | replace ("CSV NOT SELECTED","Tenant Name, Tenant ID,")|}'
+  - id: file7
+    name: Sort tenants.json file by tenantName
+    type: file
+    depends:
+      - p1
+    properties:
+      path: tenants.json
+      content: '{|read_file(''tenants.json'') | parse_json() | json_query(''sort_by([], &tenantName)'') | dump|}'
+  - id: p1
+    name: '[Library] Sophos Central Auth & whoami'
+    type: pipeline
+    depends: []
+    properties:
+      pipeline_id: 63483c1040b902a78301ba6f
+      pipeline_revision_id: latest_published
+      variables:
+        SophosCentralCredential: '{|vars.sophosCentralCredential|}'
+        debug: '{|vars.debug|}'
+        jwtToken: jwtToken
+outputs:
+  - key: markdownResults
+    value: '{|read_file(''results.md'')|}'
+  - key: csvResults
+    value: '{|read_file(''results.csv'')|}'
+  - key: jsonResults
+    value: '{|read_file(''tenants.json'')|}'
+layout:
+  elements:
+    - id: file1
+      position:
+        x: -385
+        'y': -310
+      links:
+        - sourceId: file7
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file2
+      position:
+        x: -385
+        'y': -150
+      links:
+        - sourceId: if1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file3
+      position:
+        x: -195
+        'y': -310
+      links:
+        - sourceId: file7
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file4
+      position:
+        x: -195
+        'y': -150
+      links:
+        - sourceId: if2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: if1
+      position:
+        x: -385
+        'y': -230
+      links:
+        - sourceId: file1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: if2
+      position:
+        x: -195
+        'y': -230
+      links:
+        - sourceId: file3
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file5
+      position:
+        x: -385
+        'y': -70
+      links:
+        - sourceId: file2
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file6
+      position:
+        x: -195
+        'y': -70
+      links:
+        - sourceId: file4
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: file7
+      position:
+        x: -385
+        'y': -390
+      links:
+        - sourceId: p1
+          sourcePort: bottom
+          targetPort: top
+          vertices: []
+    - id: p1
+      position:
+        x: -385
+        'y': -470
+      links: []
